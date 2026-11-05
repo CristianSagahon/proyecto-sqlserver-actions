@@ -27,3 +27,9 @@ SELECT
     (SELECT COUNT(*) FROM Ventas)          AS TotalVentas,
     (SELECT COUNT(*) FROM AuditoriaVentas) AS TotalAuditorias;
 GO
+
+IF (SELECT COUNT(*) FROM AuditoriaVentas) <> (SELECT COUNT(*) FROM Ventas)
+    RAISERROR('ERROR: hay ventas sin auditoria', 16, 1);
+ELSE
+    PRINT 'OK: todas las ventas fueron auditadas';
+GO

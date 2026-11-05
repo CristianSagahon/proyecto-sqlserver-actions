@@ -1,16 +1,21 @@
 USE EmpresaDB;
 GO
 
-DROP TRIGGER IF EXISTS trg_AuditarVenta;
-GO
-
-CREATE TRIGGER trg_AuditarVenta
+CREATE OR ALTER TRIGGER trg_AuditarVenta
 ON Ventas
 AFTER INSERT
 AS
 BEGIN
-    DECLARE @VentaID INT;
-    SELECT @VentaID = VentaID FROM inserted;
-    EXEC sp_RegistrarAuditoria @VentaID;
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+
+    DECLARE @Ventas dbo.VentasTipo;
+
+    INSERT INTO @Ventas(VentaID, Producto, Cantidad)
+    SELECT VentaID, Producto, Cantidad
+    FROM inserted;
+
+    EXEC sp_RegistrarAuditoria @Ventas;
 END;
 GO
