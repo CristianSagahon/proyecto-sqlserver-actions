@@ -25,7 +25,9 @@ jobs:
             -e MSSQL_PID="$MSSQL_PID" \
             -e MSSQL_SA_PASSWORD="$SA_PASSWORD" \
             -p 1433:1433 \
+            -v "${{ github.workspace }}/sql:/sql:ro" \
             mcr.microsoft.com/mssql/server:2022-latest
+          # ← NUEVO: la línea -v conecta tu carpeta sql/ con /sql dentro del contenedor
 
       - name: Esperar a que SQL Server responda
         run: |
@@ -41,7 +43,33 @@ jobs:
           docker logs mssql
           exit 1
 
-      - name: Mostrar versión de SQL Server
+      # ← NUEVO: estos dos pasos reemplazan a "Mostrar versión de SQL Server"
+      - name: Crear base de datos
         run: |
           docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost -U sa -P "$SA_PASSWORD" -C -Q "SELECT @@VERSION"
+            -S localhost -U sa -P "$SA_PASSWORD" -C -b \
+            -i /sql/create_database.sql
+
+      - name: Crear tablas
+        run: |
+          docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -P "$SA_PASSWORD" -C -b \
+            -i /sql/create_tables.sql
+          docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -P "$SA_PASSWORD" -C \
+            -d EmpresaDB -Q "SELECT name FROM sys.tables"
+      
+      - name: Crear procedimiento almacenado
+        run: |
+          docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -P "$SA_PASSWORD" -C -b \
+            -i /sql/create_procedure.sql
+
+      - name: Crear trigger
+        run: |
+          docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -P "$SA_PASSWORD" -C -b \
+            -i /sql/create_trigger.sql
+          docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -P "$SA_PASSWORD" -C -d EmpresaDB \
+            -Q "SELECT name, type_desc FROM sys.objects WHERE type IN ('P','TR')"
