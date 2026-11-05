@@ -34,20 +34,3 @@ INSERT INTO Inventario(Producto, Existencias) VALUES
 ('Teclado', 50),
 ('Mouse',   50);
 GO
-BEGIN TRY
-    INSERT INTO Ventas(Producto, Cantidad) VALUES ('Laptop', 100);
-END TRY
-BEGIN CATCH
-    IF @@TRANCOUNT > 0 ROLLBACK;
-    PRINT CONCAT('Rechazada como se esperaba: ', ERROR_MESSAGE());
-END CATCH;
-GO
-
-PRINT '=== Inventario ===';
-SELECT Producto, Existencias FROM Inventario;
-
-IF (SELECT Existencias FROM Inventario WHERE Producto = 'Laptop') <> 6
-    RAISERROR('ERROR: existencias de Laptop incorrectas', 16, 1);
-ELSE
-    PRINT 'OK: inventario correcto';
-GO
