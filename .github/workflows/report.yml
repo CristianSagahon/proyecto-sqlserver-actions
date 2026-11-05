@@ -1,0 +1,81 @@
+name: Reporte CSV programado
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+env:
+  ACCEPT_EULA: Y
+  MSSQL_PID: Developer
+  SA_PASSWORD: ${{ secrets.MSSQL_SA_PASSWORD }}
+
+jobs:
+  reporte:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Iniciar SQL Server en Docker
+        run: |
+          docker run -d --name mssql \
+            -e ACCEPT_EULA="$ACCEPT_EULA" \
+            -e MSSQL_PID="$MSSQL_PID" \
+            -e MSSQL_SA_PASSWORD="$SA_PASSWORD" \
+            -v "${{ github.workspace }}/sql:/sql:ro" \
+            mcr.microsoft.com/mssql/server:2022-latest
+
+      - name: Esperar a SQL Server
+        run: |
+          for i in $(seq 1 30); do
+            docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -P "$SA_PASSWORD" -C -Q "SELECT 1" > /dev/null 2>&1 && exit 0
+            sleep 5
+          done
+          docker logs mssql
+          exit 1
+
+      - name: Crear base de datos y cargar datos
+        run: |
+          for script in create_database create_tables create_procedure create_trigger test_data; do
+            echo "Ejecutando $script.sql"
+            docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -P "$SA_PASSWORD" -C -b \
+              -i "/sql/$script.sql" > /dev/null
+          done
+
+      - name: Generar reportes CSV
+        run: |
+          mkdir -p reporte
+
+          sql() {
+            docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -P "$SA_PASSWORD" -C -b -d EmpresaDB \
+              -s "," -W -h -1 -Q "$1"
+          }
+
+          echo "VentaID,Producto,Cantidad,Fecha,Mensaje" > reporte/ventas.csv
+          sql "SET NOCOUNT ON;
+               SELECT v.VentaID, v.Producto, v.Cantidad,
+                      FORMAT(v.Fecha,'yyyy-MM-dd HH:mm:ss'),
+                      a.Mensaje
+               FROM Ventas v
+               LEFT JOIN AuditoriaVentas a ON a.VentaID = v.VentaID
+               ORDER BY v.VentaID;" >> reporte/ventas.csv
+
+          echo "Producto,Existencias" > reporte/inventario.csv
+          sql "SET NOCOUNT ON;
+               SELECT Producto, Existencias FROM Inventario
+               ORDER BY Producto;" >> reporte/inventario.csv
+
+          echo "--- ventas.csv ---";     cat reporte/ventas.csv
+          echo "--- inventario.csv ---"; cat reporte/inventario.csv
+
+      - name: Publicar CSV como Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-ventas-${{ github.run_number }}
+          path: reporte/*.csv
+          retention-days: 30
